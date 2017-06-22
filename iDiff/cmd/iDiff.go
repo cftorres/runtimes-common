@@ -20,22 +20,19 @@ var iDiffCmd = &cobra.Command{
 			os.Exit(1)
 		}
 		// TODO: Use more effective mapping structure for differs
-		if args[2] == "hist" {
-			diff := differs.History(args[0], args[1])
-			fmt.Println(diff)
-		} else if args[2] == "dir" {
-			diff := differs.Package(args[0], args[1])
+		if diff, err := differs.Diff(args[0], args[1], args[2]); err == nil {
 			fmt.Println(diff)
 		} else {
-			fmt.Println("Unknown differ")
+			fmt.Println(err)
+			os.Exit(1)
 		}
 	},
 }
 
 func checkArgNum(args []string) (bool, error) {
 	var err_message string
-	if len(args) < 2 {
-		err_message = "Please have at least two container IDs as arguments."
+	if len(args) < 3 {
+		err_message = "Please have two image IDs and one differ as arguments."
 		return false, errors.New(err_message)
 	} else if len(args) > 3 {
 		err_message = "Too many arguments."
