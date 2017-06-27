@@ -4,7 +4,8 @@ import (
 	"github.com/pmezard/go-difflib/difflib"
 )
 
-// Modification of difflib's unified differ
+// GetAdditions modifies difflib's unified diffing tools to return the additions
+// to a, that exist in b.
 func GetAdditions(a, b []string) []string {
 	matcher := difflib.NewMatcher(a, b)
 	differences := matcher.GetGroupedOpCodes(0)
@@ -23,6 +24,8 @@ func GetAdditions(a, b []string) []string {
 	return adds
 }
 
+// GetDeletions modifies difflib's unified diffing tools to return the deletions
+// from a, that do not exist in b.
 func GetDeletions(a, b []string) []string {
 	matcher := difflib.NewMatcher(a, b)
 	differences := matcher.GetGroupedOpCodes(0)
@@ -41,6 +44,8 @@ func GetDeletions(a, b []string) []string {
 	return dels
 }
 
+// GetMatches modifies difflib's unified diffing tools to return the matches
+// existing in both a and b.
 func GetMatches(a, b []string) []string {
 	matcher := difflib.NewMatcher(a, b)
 	matchindexes := matcher.GetMatchingBlocks()

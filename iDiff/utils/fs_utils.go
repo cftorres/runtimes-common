@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+
+	"github.com/golang/glog"
 )
 
-type Directory struct {
-	Root    string
-	Entries []string
-}
-
+// GetDirectory creates a directory structure for the directory existing at the
+// path indicated by dirpath and returns it.
 func GetDirectory(dirpath string) (Directory, error) {
 	dirfile, err := ioutil.ReadFile(dirpath)
 	if err != nil {
@@ -27,10 +26,11 @@ func GetDirectory(dirpath string) (Directory, error) {
 	return dir, nil
 }
 
-// Checks for content differences between files of the same name from different directories
+// getModifiedEntries checks for content differences between files of the same
+// name from different directories and returns those files that differ.
 func getModifiedEntries(d1, d2 Directory) []string {
-	d1files := d1.Entries
-	d2files := d2.Entries
+	d1files := d1.Content
+	d2files := d2.Content
 
 	filematches := GetMatches(d1files, d2files)
 
@@ -41,14 +41,14 @@ func getModifiedEntries(d1, d2 Directory) []string {
 
 		f1stat, err := os.Stat(f1path)
 		if err != nil {
-			fmt.Printf("Error checking directory entry %s: %s\n", f, err)
-			os.Exit(1)
+			glog.Errorf("Error checking directory entry %s: %s\n", f, err)
+			continue
 		}
 		if !f1stat.IsDir() {
 			same, err := checkSameFile(f1path, f2path)
 			if err != nil {
-				fmt.Printf("Error diffing contents of %s and %s: %s\n", f1path, f2path, err)
-				os.Exit(1)
+				glog.Errorf("Error diffing contents of %s and %s: %s\n", f1path, f2path, err)
+				continue
 			}
 			if !same {
 				modified = append(modified, f)
@@ -59,11 +59,11 @@ func getModifiedEntries(d1, d2 Directory) []string {
 }
 
 func getAddedEntries(d1, d2 Directory) []string {
-	return GetAdditions(d1.Entries, d2.Entries)
+	return GetAdditions(d1.Content, d2.Content)
 }
 
 func getDeletedEntries(d1, d2 Directory) []string {
-	return GetDeletions(d1.Entries, d2.Entries)
+	return GetDeletions(d1.Content, d2.Content)
 }
 
 func compareDirEntries(d1, d2 Directory) ([]string, []string, []string) {
@@ -105,6 +105,8 @@ func checkSameFile(f1name, f2name string) (bool, error) {
 	return true, nil
 }
 
+// DiffDirectory returns the additions, deletions, and modifications between
+// two different directories.
 func DiffDirectory(d1, d2 Directory) ([]string, []string, []string) {
 	adds, dels, mods := compareDirEntries(d1, d2)
 	return adds, dels, mods
