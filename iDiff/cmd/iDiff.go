@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"bytes"
+//	"bytes"
 	"errors"
 	"fmt"
 	"regexp"
@@ -32,9 +32,9 @@ func validateArgs(args []string) (bool, error) {
 	if validArgNum, err := checkArgNum(args); !validArgNum {
 		return false, err
 	}
-	if validArgType, err := checkArgType(args); !validArgType {
+	/*if validArgType, err := checkArgType(args); !validArgType {
 		return false, err
-	}
+	}*/
 	return true, nil
 }
 
@@ -51,7 +51,7 @@ func checkArgNum(args []string) (bool, error) {
 	}
 }
 
-func checkArgType(args []string) (bool, error) {
+/*func checkArgType(args []string) (bool, error) {
 	var buffer bytes.Buffer
 	valid := true
 	if !checkImageID(args[0]) {
@@ -83,7 +83,7 @@ func checkImageID(arg string) bool {
 		return false
 	}
 	return true
-}
+}*/
 
 func checkDiffer(arg string) bool {
 	pattern := regexp.MustCompile("[a-z|A-Z]*")

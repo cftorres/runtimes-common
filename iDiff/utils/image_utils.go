@@ -1,12 +1,15 @@
 package utils
 
 import (
+	"fmt"
 	"context"
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/system"
 )
@@ -37,13 +40,25 @@ func ImageToDir(img string) (string, string, error) {
 
 // ImageToTar writes an image to a .tar file
 func ImageToTar(cli client.APIClient, image string) (string, error) {
-	imgBytes, err := cli.ImageSave(context.Background(), []string{image})
-	if err != nil {
-		return "", err
+	if checkImageID(image) {
+		fmt.Println("NO HERE")
+		imgBytes, err := cli.ImageSave(context.Background(), []string{image})
+		if err != nil {
+			return "", err
+		}
+		defer imgBytes.Close()
+		newpath := image + ".tar"
+		return newpath, copyToFile(newpath, imgBytes)
+	} else {
+		fmt.Println("HERE")
+		imgBytes, err := cli.ImagePull(context.Background(), image, types.ImagePullOptions{})
+		if err != nil {
+			return "", err
+		}
+		defer imgBytes.Close()
+		newpath := image + ".tar"
+		return newpath, copyToFile(newpath, imgBytes)
 	}
-	defer imgBytes.Close()
-	newpath := image + ".tar"
-	return newpath, copyToFile(newpath, imgBytes)
 }
 
 // copyToFile writes the content of the reader to the specified file
@@ -71,4 +86,12 @@ func copyToFile(outfile string, r io.Reader) error {
 	}
 
 	return nil
+}
+
+func checkImageID(arg string) bool {
+	pattern := regexp.MustCompile("[a-z|0-9]{12}")
+	if exp := pattern.FindString(arg); exp != arg {
+		return false
+	}
+	return true
 }
