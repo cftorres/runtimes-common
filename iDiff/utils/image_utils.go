@@ -5,6 +5,7 @@ import (
 	//"encoding/json"
 	//"encoding/base64"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -43,7 +44,7 @@ func ImageToDir(img string) (string, string, error) {
 // ImageToTar writes an image to a .tar file
 func ImageToTar(cli client.APIClient, image string) (string, error) {
 	if checkImageID(image) {
-		fmt.Println("NO HERE")
+		//fmt.Println("NO HERE")
 		imgBytes, err := cli.ImageSave(context.Background(), []string{image})
 		if err != nil {
 			return "", err
@@ -67,9 +68,58 @@ func ImageToTar(cli client.APIClient, image string) (string, error) {
 			return "", err
 		}
 		defer imgBytes.Close()
-		io.Copy(os.Stdout, imgBytes)
-		newpath := image[25:32] + image[33:34] + ".tar"
-		return newpath, copyToFile(newpath, imgBytes)
+		//io.Copy(os.Stdout, imgBytes)
+
+		d := json.NewDecoder(events)
+
+	    type Event struct {
+	        Status         string `json:"status"`
+	        Error          string `json:"error"`
+	        Progress       string `json:"progress"`
+	        ProgressDetail struct {
+	            Current int `json:"current"`
+	            Total   int `json:"total"`
+	        } `json:"progressDetail"`
+	    }
+
+	    var events []*Event
+	    for {
+	    	var event *Event
+	        if err := d.Decode(&event); err != nil {
+	            if err == io.EOF {
+	                break
+	            }
+
+	            return "", err
+	        }
+
+	        events = append(events, event)
+	    }
+
+	    // Latest event for new image
+	    // EVENT: {Status:Status: Downloaded newer image for busybox:latest Error: Progress:[==================================================>]  699.2kB/699.2kB ProgressDetail:{Current:699243 Total:699243}}
+	    // Latest event for up-to-date image
+	    // EVENT: {Status:Status: Image is up to date for busybox:latest Error: Progress: ProgressDetail:{Current:0 Total:0}}
+	    if events != nil {
+	    	digestStatus = events[len(events)-2].Status
+	    	pattern := regexp.MustCompile("^Digest: (sha256[a-z|0-9]{64})$")
+			match := pattern.FindStringSubmatch(digestStatus)
+	        if match != "" {
+	        	tagIndex := strings.LastIndex(":", image)
+	        	if tagIndex > 0 {
+	        		image = image[:tagIndex]
+	        	}
+	        	imgBytes, err := cli.ImageSave(context.Background(), []string{image})
+				if err != nil {
+					return "", err
+				}
+				defer imgBytes.Close()
+				newpath := image[25:32] + image[33:34] + ".tar"
+				return newpath, copyToFile(newpath, imgBytes)
+	        }
+	    }
+
+		return "", errors.New("Could not pull image from URL")
 	}
 }
 
