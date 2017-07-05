@@ -2,7 +2,7 @@ package utils
 
 import (
 	//"fmt"
-	//"encoding/json"
+	"encoding/json"
 	//"encoding/base64"
 	"context"
 	"errors"
@@ -63,34 +63,34 @@ func ImageToTar(cli client.APIClient, image string) (string, error) {
 			panic(err)
 		}
 		authStr := base64.URLEncoding.EncodeToString(encodedJSON)*/
-		imgBytes, err := cli.ImagePull(context.Background(), image, types.ImagePullOptions{})
+		resp, err := cli.ImagePull(context.Background(), image, types.ImagePullOptions{})
 		if err != nil {
 			return "", err
 		}
-		defer imgBytes.Close()
+		defer resp.Close()
 		//io.Copy(os.Stdout, imgBytes)
 
-		d := json.NewDecoder(events)
+		d := json.NewDecoder(resp)
 
-	    type Event struct {
-	        Status         string `json:"status"`
-	        Error          string `json:"error"`
-	        Progress       string `json:"progress"`
-	        ProgressDetail struct {
-	            Current int `json:"current"`
-	            Total   int `json:"total"`
-	        } `json:"progressDetail"`
-	    }
+		type Event struct {
+			Status         string `json:"status"`
+			Error          string `json:"error"`
+			Progress       string `json:"progress"`
+			ProgressDetail struct {
+				Current int `json:"current"`
+				Total   int `json:"total"`
+			} `json:"progressDetail"`
+		}
 
-	    var events []*Event
-	    for {
-	    	var event *Event
-	        if err := d.Decode(&event); err != nil {
-	            if err == io.EOF {
-	                break
-	            }
+		var events []Event
+		for {
+			var event Event
+			if err := d.Decode(&event); err != nil {
+				if err == io.EOF {
+					break
+				}
 
-	            return "", err
+			return "", err
 	        }
 
 	        events = append(events, event)
@@ -101,13 +101,13 @@ func ImageToTar(cli client.APIClient, image string) (string, error) {
 	    // Latest event for up-to-date image
 	    // EVENT: {Status:Status: Image is up to date for busybox:latest Error: Progress: ProgressDetail:{Current:0 Total:0}}
 	    if events != nil {
-	    	digestStatus = events[len(events)-2].Status
+	    	digestStatus := events[len(events)-2].Status
 	    	pattern := regexp.MustCompile("^Digest: (sha256[a-z|0-9]{64})$")
 			match := pattern.FindStringSubmatch(digestStatus)
-	        if match != "" {
+	        if len(match) != 0 {
 	        	tagIndex := strings.LastIndex(":", image)
 	        	if tagIndex > 0 {
-	        		image = image[:tagIndex]
+	        		image = image[:tagIndex] + match[1]
 	        	}
 	        	imgBytes, err := cli.ImageSave(context.Background(), []string{image})
 				if err != nil {
