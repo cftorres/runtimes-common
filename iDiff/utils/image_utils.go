@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"fmt"
+	//"fmt"
 	//"encoding/json"
 	//"encoding/base64"
 	"context"
@@ -42,8 +42,8 @@ func ImageToDir(img string) (string, string, error) {
 
 // ImageToTar writes an image to a .tar file
 func ImageToTar(cli client.APIClient, image string) (string, error) {
-	if checkImageID(image) {
-		fmt.Println("NO HERE")
+	if true{
+		//fmt.Println("NO HERE")
 		imgBytes, err := cli.ImageSave(context.Background(), []string{image})
 		if err != nil {
 			return "", err
@@ -52,7 +52,7 @@ func ImageToTar(cli client.APIClient, image string) (string, error) {
 		newpath := image + ".tar"
 		return newpath, copyToFile(newpath, imgBytes)
 	} else {
-		fmt.Println("HERE")
+		//fmt.Println("HERE")
 		/*authConfig := types.AuthConfig{
 			Username: "colettet@google.com",
 			Password: "password",
@@ -67,7 +67,8 @@ func ImageToTar(cli client.APIClient, image string) (string, error) {
 			return "", err
 		}
 		defer imgBytes.Close()
-		newpath := image + ".tar"
+		io.Copy(os.Stdout, imgBytes)
+		newpath := image[25:32] + image[33:34] + ".tar"
 		return newpath, copyToFile(newpath, imgBytes)
 	}
 }
