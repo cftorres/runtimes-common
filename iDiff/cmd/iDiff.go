@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"bytes"
+//	"bytes"
 	"errors"
 	"fmt"
 	"regexp"
@@ -51,7 +51,7 @@ func checkArgNum(args []string) (bool, error) {
 	}
 }
 
-func checkArgType(args []string) (bool, error) {
+/*func checkArgType(args []string) (bool, error) {
 	var buffer bytes.Buffer
 	valid := true
 	if !checkImageID(args[0]) {

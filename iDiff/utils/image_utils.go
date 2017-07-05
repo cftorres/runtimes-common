@@ -1,12 +1,17 @@
 package utils
 
 import (
+	"fmt"
+	//"encoding/json"
+	//"encoding/base64"
 	"context"
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/system"
 )
@@ -38,20 +43,33 @@ func ImageToDir(img string) (string, string, error) {
 // ImageToTar writes an image to a .tar file
 func ImageToTar(cli client.APIClient, image string) (string, error) {
 	if checkImageID(image) {
+		fmt.Println("NO HERE")
 		imgBytes, err := cli.ImageSave(context.Background(), []string{image})
 		if err != nil {
 			return "", err
 		}
+		defer imgBytes.Close()
+		newpath := image + ".tar"
+		return newpath, copyToFile(newpath, imgBytes)
 	} else {
-		imgBytes, err := cli.ImagePull(context.Background(), image)
+		fmt.Println("HERE")
+		/*authConfig := types.AuthConfig{
+			Username: "colettet@google.com",
+			Password: "password",
+		}
+		encodedJSON, err := json.Marshal(authConfig)
+		if err != nil {
+			panic(err)
+		}
+		authStr := base64.URLEncoding.EncodeToString(encodedJSON)*/
+		imgBytes, err := cli.ImagePull(context.Background(), image, types.ImagePullOptions{})
 		if err != nil {
 			return "", err
 		}
+		defer imgBytes.Close()
+		newpath := image + ".tar"
+		return newpath, copyToFile(newpath, imgBytes)
 	}
-
-	defer imgBytes.Close()
-	newpath := image + ".tar"
-	return newpath, copyToFile(newpath, imgBytes)
 }
 
 // copyToFile writes the content of the reader to the specified file
