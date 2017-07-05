@@ -32,9 +32,9 @@ func validateArgs(args []string) (bool, error) {
 	if validArgNum, err := checkArgNum(args); !validArgNum {
 		return false, err
 	}
-	if validArgType, err := checkArgType(args); !validArgType {
+	/*if validArgType, err := checkArgType(args); !validArgType {
 		return false, err
-	}
+	}*/
 	return true, nil
 }
 
@@ -77,13 +77,13 @@ func checkArgType(args []string) (bool, error) {
 	return true, nil
 }
 
-func checkImageID(arg string) bool {
+/*func checkImageID(arg string) bool {
 	pattern := regexp.MustCompile("[a-z|0-9]{12}")
 	if exp := pattern.FindString(arg); exp != arg {
 		return false
 	}
 	return true
-}
+}*/
 
 func checkDiffer(arg string) bool {
 	pattern := regexp.MustCompile("[a-z|A-Z]*")
