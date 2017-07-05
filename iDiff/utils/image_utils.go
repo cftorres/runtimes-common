@@ -1,9 +1,9 @@
 package utils
 
 import (
-	"fmt"
-	"encoding/json"
-	"encoding/base64"
+	//"fmt"
+	//"encoding/json"
+	//"encoding/base64"
 	"context"
 	"io"
 	"os"
@@ -52,22 +52,23 @@ func ImageToTar(cli client.APIClient, image string) (string, error) {
 		newpath := image + ".tar"
 		return newpath, copyToFile(newpath, imgBytes)
 	} else {
-		fmt.Println("HERE")
-		authConfig := types.AuthConfig{
-      		Username: "username",
-      		Password: "password",
-  		}
+		//fmt.Println("HERE")
+		/*authConfig := types.AuthConfig{
+			Username: "colettet@google.com",
+			Password: "password",
+		}
 		encodedJSON, err := json.Marshal(authConfig)
 		if err != nil {
-		    panic(err)
+			panic(err)
 		}
-  		authStr := base64.URLEncoding.EncodeToString(encodedJSON)
+		authStr := base64.URLEncoding.EncodeToString(encodedJSON)*/
 		imgBytes, err := cli.ImagePull(context.Background(), image, types.ImagePullOptions{})
 		if err != nil {
 			return "", err
 		}
 		defer imgBytes.Close()
-		newpath := image + ".tar"
+		io.Copy(os.Stdout, imgBytes)
+		newpath := image[25:32] + image[33:34] + ".tar"
 		return newpath, copyToFile(newpath, imgBytes)
 	}
 }
