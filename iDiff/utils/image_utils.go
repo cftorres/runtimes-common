@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -79,30 +78,42 @@ func ImageToTar(cli client.APIClient, image string) (string, error) {
 
 				return "", err
 			}
-
 			events = append(events, event)
 		}
 
 		if events != nil {
+			// The second-to-last status of an ImagePull output should be the image digest
 			digestStatus := events[len(events)-2].Status
-			fmt.Println(digestStatus)
-			pattern := regexp.MustCompile("^Digest: (sha256[a-z|0-9]{64})$")
-			match := pattern.FindStringSubmatch(digestStatus)
-			if len(match) != 0 {
-				tagIndex := strings.LastIndex(":", image)
-				if tagIndex > 0 {
-					image = image[:tagIndex] + match[1]
+			digestPattern := regexp.MustCompile("^Digest: (sha256[a-z|0-9]{64})$")
+			digestMatch := digestPattern.FindStringSubmatch(digestStatus)
+			// If the second-to-last status is indeed the image digest, obtain the digest
+			if len(digestMatch) != 0 {
+				URLPattern := regexp.MustCompile("^(.+/(.+))(:.+){0,1}$")
+				URLMatch := URLPattern.FindStringSubmatch(image)
+				imageName := URLMatch[2]
+				imageURL := image
+				if len(URLMatch) == 4 {
+					tag := URLMatch[3]
+					imageURL = URLMatch[1]
+					imageName = imageName + tag
 				}
-			}
-			imgBytes, err := cli.ImageSave(context.Background(), []string{image})
-			if err != nil {
-				return "", err
-			}
-			defer imgBytes.Close()
-			// TODO: use regular expressions to parse image name from URL
-			newpath := image[25:32] + image[33:34] + ".tar"
-			return newpath, copyToFile(newpath, imgBytes)
+				/*tagIndex := strings.LastIndex(":", image)
+				if tagIndex > 0 {
+					imageName := image[:tagIndex]
+				}*/
+				imageID := digestMatch[1]
+
+				imgBytes, err := cli.ImageSave(context.Background(), []string{imageURL + imageID})
+				if err != nil {
+					return "", err
+				}
+				defer imgBytes.Close()
+				// TODO: use regular expressions to parse image name from URL
+				newpath := imageName//image[25:32] + image[33:34] + ".tar"
+				return newpath, copyToFile(newpath, imgBytes)
 	        }
+		}
+			
 		return "", errors.New("Could not pull image from URL")
 	}
 }
