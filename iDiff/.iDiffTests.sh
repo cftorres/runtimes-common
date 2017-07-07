@@ -1,4 +1,6 @@
 #!/bin/bash
+docker pull gcr.io/google_containers/busybox:1.24
+docker pull gcr.io/google_containers/busybox:latest
 go run iDiff/main.go iDiff 0cb40641836c e7d168d7db45 dir -j > iDiff/tests/runs/busybox_diff_actual.json
 diff=$(diff iDiff/tests/busybox_diff_expected.json iDiff/tests/runs/busybox_diff_actual.json)
 if [ $diff ]; then
