@@ -3,10 +3,14 @@ package utils
 import (
 	"errors"
 	"path/filepath"
+	"os"
 	"strings"
+
+	"github.com/golang/glog"
 )
 
 type Image struct {
+	Source string
 	FSPath string
 	History []string
 	Layers []string
@@ -18,7 +22,7 @@ type ImagePrepper struct {
 }
 
 type Prepper interface {
-	ImageToFS() (string, error)
+	GetImageFS() (string, error)
 }
 
 func (p ImagePrepper) GetImage() (Image, error) {
@@ -26,22 +30,29 @@ func (p ImagePrepper) GetImage() (Image, error) {
 	
 	var prepper Prepper	
 	if CheckImageID(img) {
-		prepper := IDPrepper{p}
+		prepper = IDPrepper{p}
 	} else if CheckImageURL(img) {
-		prepper := CloudPrepper{p}
+		prepper = CloudPrepper{p}
 	} else if CheckTar(img) {
-		prepper := TarPrepper{p}
+		prepper = TarPrepper{p}
 	} else {
 		return Image{}, errors.New("Could not retrieve image from source")
 	}
 		
-	imgPath, err := prepper.ImageToFS()
+	imgPath, err := prepper.GetImageFS()
 	if err != nil {
 		return Image{}, err
 	}
 	
+	history, err := getHistoryList(p.Source, p.UseDocker)
+	if err != nil {
+		return Image{}, err
+	}
+
 	return Image{
+		Source: p.Source,
 		FSPath: imgPath,
+		History: history,
 	}, nil
 }
 
@@ -56,10 +67,10 @@ func getImageFromTar(tarPath string) (string, error) {
 
 // CloudPrepper prepares images sourced from a Cloud registry
 type CloudPrepper struct {
-	prepper ImagePrepper
+	ImagePrepper
 }
 
-func (p *CloudPrepper) ImageToFS() (string, error) {
+func (p CloudPrepper) GetImageFS() (string, error) {
 	// check client compatibility with Docker API
 	valid, err := ValidDockerVersion(p.UseDocker)
 	if err != nil {
@@ -69,9 +80,15 @@ func (p *CloudPrepper) ImageToFS() (string, error) {
 	if !valid {
 		glog.Info("Docker version incompatible with api, shelling out to local Docker client.")
 		imageID, imageName, err := pullImageCmd(p.Source)
+		if err != nil {
+			return "", err
+		}
 		tarPath, err = imageToTarCmd(imageID, imageName)
 	} else {
 		imageID, imageName, err := pullImageFromRepo(p.Source)
+		if err != nil {
+			return "", err
+		}
 		tarPath, err = saveImageToTar(imageID, imageName)
 	}
 	if err != nil {
@@ -83,10 +100,10 @@ func (p *CloudPrepper) ImageToFS() (string, error) {
 }
 
 type IDPrepper struct {
-	prepper ImagePrepper
+	ImagePrepper
 }
 
-func (p *IDPrepper) ImageToFS() (string, error) {
+func (p IDPrepper) GetImageFS() (string, error) {
 	// check client compatibility with Docker API
 	valid, err := ValidDockerVersion(p.UseDocker)
 	if err != nil {
@@ -108,9 +125,9 @@ func (p *IDPrepper) ImageToFS() (string, error) {
 }
 
 type TarPrepper struct {
-	prepper ImagePrepper
+	ImagePrepper
 }
 
-func (p *TarPrepper) ImageToFS() (string, error) {
+func (p TarPrepper) GetImageFS() (string, error) {
 	return getImageFromTar(p.Source)
 }

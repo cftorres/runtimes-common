@@ -96,18 +96,12 @@ func pullImageFromRepo(image string) (string, string, error) {
 	return processImagePullEvents(image, events)
 }
 
-// GetImageHistory shells out the docker history command and returns a list of history response items.
+// getImageHistory shells out the docker history command and returns a list of history response items.
 // The history response items contain only the Created By information for each event.
-func GetImageHistory(image string) ([]img.HistoryResponseItem, error) {
+func getImageHistory(image string) ([]img.HistoryResponseItem, error) {
 	imageID := image
 	var err error
 	var history []img.HistoryResponseItem
-	if !CheckImageID(image) {
-		imageID, _, err = pullImageCmd(image)
-		if err != nil {
-			return history, err
-		}
-	}
 	histArgs := []string{"history", "--no-trunc", imageID}
 	dockerHistCmd := exec.Command("docker", histArgs...)
 	var response bytes.Buffer
@@ -194,7 +188,7 @@ func pullImageCmd(image string) (string, string, error) {
 	return processPullCmdOutput(image, response)
 }
 
-func imageToTarCmd(imageName, imageID string) (string, error) {
+func imageToTarCmd(imageID, imageName string) (string, error) {
 	cmdArgs := []string{"save", imageID}
 	dockerSaveCmd := exec.Command("docker", cmdArgs...)
 	var out bytes.Buffer
@@ -215,4 +209,37 @@ func imageToTarCmd(imageName, imageID string) (string, error) {
 		return "", err
 	}
 	return imageTarPath, nil
+}
+
+// TODO: use metadata to get history instead
+func getHistoryList(image string, eng bool) ([]string, error) {
+	validDocker, err := ValidDockerVersion(eng)
+	if err != nil {
+		return []string{}, err
+	}
+	var history []img.HistoryResponseItem
+	if validDocker {
+		ctx := context.Background()
+		cli, err := client.NewEnvClient()
+		if err != nil {
+			return []string{}, err
+		}
+		history, err = cli.ImageHistory(ctx, image)
+		if err != nil {
+			return []string{}, err
+		}
+	} else {
+		glog.Info("Docker version incompatible with api, shelling out to local Docker client.")
+		history, err = getImageHistory(image)
+		if err != nil {
+			return []string{}, err
+		}
+	}
+
+	strhistory := make([]string, len(history))
+	for i, layer := range history {
+		layerDescription := strings.TrimSpace(layer.CreatedBy)
+		strhistory[i] = fmt.Sprintf("%s\n", layerDescription)
+	}
+	return strhistory, nil
 }
