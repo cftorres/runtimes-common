@@ -9,7 +9,7 @@ import (
 type DiffRequest struct {
 	Image1    utils.Image
 	Image2    utils.Image
-	DiffType  Differ
+	DiffTypes  []Differ
 	UseDocker bool
 }
 
@@ -32,19 +32,38 @@ var diffs = map[string]Differ{
 	"node":    NodeDiffer{},
 }
 
-func (diff DiffRequest) GetDiff() (DiffResult, error) {
+func (diff DiffRequest) GetDiff() (results map[string]DiffResult, err error) {
 	img1 := diff.Image1
 	img2 := diff.Image2
-	differ := diff.DiffType
+	diffs := diff.DiffTypes
 	eng := diff.UseDocker
-	return differ.Diff(img1, img2, eng)
+
+	for _, differ := range diffs {
+		differName := reflect.TypeOf(diff).Name()
+		if diff, err := differ.Diff(img1, img2, eng); err == nil {
+			results[differName] = diff
+		} else {
+			glog.Errorf("Error getting diff with %s", differName)
+		}
+	}
+
+	if len(results) == 0 {
+		err = errors.New("Could not perform diff on %s and %s", img1, img2) 
+	}
+	return
 }
 
-func GetDiffer(diffName string) (differ Differ, err error) {
-	if d, exists := diffs[diffName]; exists {
-		differ = d
-	} else {
-		errors.New("Unknown differ")
+func GetDiffers(diffNames []string) (differs []Differ, err error) {
+	var differs []Differ
+	for _, diffName := range diffNames{
+		if d, exists := diffs[diffName]; exists {
+			differs = append(differs, d)
+		} else {
+			glog.Errorf("Unknown differ specified", diffName)
+		}
+	}
+	if len(differs) == 0 {
+		err = errors.New("No known differs specified")
 	}
 	return
 }

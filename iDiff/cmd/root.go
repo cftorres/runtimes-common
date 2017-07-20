@@ -37,24 +37,28 @@ var RootCmd = &cobra.Command{
 			glog.Error(err.Error())
 			os.Exit(1)
 		}
-		differ, err := differs.GetDiffer(args[1])
+		diffTypes, err := differs.GetDiffers(args[1:len(args)-2])
 		if err != nil {
 			glog.Error(err.Error())
 			os.Exit(1)
 		}
 
-		diff := differs.DiffRequest{image1, image2, differ, eng}
-		if diff, err := diff.GetDiff(); err == nil {
-			if json {
-				err = diff.OutputJSON()
-				if err != nil {
-					glog.Error(err)
+		req := differs.DiffRequest{image1, image2, diffTypes, eng}
+		if diffs, err := req.GetDiff(); err == nil {
+			for differ, diff := range diffs {
+				fmt.Printf("-----%s Result-----", differ)
+				if json {
+					err = diff.OutputJSON()
+					if err != nil {
+						glog.Error(err)
+					}
+				} else {
+					err = diff.OutputText()
+					if err != nil {
+						glog.Error(err)
+					}
 				}
-			} else {
-				err = diff.OutputText()
-				if err != nil {
-					glog.Error(err)
-				}
+				fmt.Printf("------------------", differ)
 			}
 
 			errMsg := remove(image1.FSPath, true)
@@ -89,9 +93,6 @@ func checkArgNum(args []string) (bool, error) {
 	var errMessage string
 	if len(args) < 3 {
 		errMessage = "Too few arguments. Should have three: [DIFFER] [IMAGE] [IMAGE]."
-		return false, errors.New(errMessage)
-	} else if len(args) > 3 {
-		errMessage = "Too many arguments. Should have three: [DIFFER] [IMAGE] [IMAGE]."
 		return false, errors.New(errMessage)
 	} else {
 		return true, nil
