@@ -52,8 +52,7 @@ var RootCmd = &cobra.Command{
 
 		req := differs.DiffRequest{image1, image2, diffTypes}
 		if diffs, err := req.GetDiff(); err == nil {
-			for differ, diff := range diffs {
-				fmt.Printf("-----%s Result-----\n", differ)
+			for _, diff := range diffs {
 				if json {
 					err = diff.OutputJSON()
 					if err != nil {
