@@ -22,9 +22,22 @@ while read -r differ actual expected; do
   success=0
   diff=$(diff "$actual" "$expected")
   if [[ -n "$diff" ]]; then
-    echo "iDiff" "$differ" "diff output is not as expected"
-    echo $diff
-    success=1
+    python iDiff/tests/multi_version_packages_test_processor.py $expected
+    if [[ $? -ne 0 ]]; then
+      echo "Could not process expected test file for file diff comparison"
+      exit 1
+    fi
+    python iDiff/tests/multi_version_packages_test_processor.py $actual
+    if [[ $? -ne 0 ]]; then
+      echo "Could not process actual test file for file diff comparison"
+      exit 1
+    fi
+    diff=$(diff "$actual" "$expected")
+    if [[ -n "$diff" ]]; then
+      echo "iDiff" "$differ" "diff output is not as expected"
+      echo $diff
+      success=1
+    fi
   fi
 done < iDiff/tests/diff_comparisons.txt
 if [[ "$success" -ne 0 ]]; then
