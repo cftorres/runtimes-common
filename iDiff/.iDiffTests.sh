@@ -7,27 +7,13 @@ while read -r differ image1 image2 file; do
   fi
 done < iDiff/tests/differ_runs.txt
 
-python iDiff/tests/fileDiff_test_processor.py iDiff/tests/file_diff_expected.json
-if [[ $? -ne 0 ]]; then
-  echo "Could not process expected test file for file diff comparison"
+while read -r preprocess json file; do
+  python "$preprocess" "$json"
+  if [[ $? -ne 0 ]]; then
+  echo "Could not preprocess $json for diff comparison"
   exit 1
 fi
-python iDiff/tests/fileDiff_test_processor.py iDiff/tests/file_diff_actual.json
-if [[ $? -ne 0 ]]; then
-  echo "Could not process actual test file for file diff comparison"
-  exit 1
-fi
-
-python iDiff/tests/multi_version_packages_test_processor.py iDiff/tests/node_diff_expected.json
-if [[ $? -ne 0 ]]; then
-  echo "Could not process expected test file for file diff comparison"
-  exit 1
-fi
-python iDiff/tests/multi_version_packages_test_processor.py iDiff/tests/node_diff_actual.json
-if [[ $? -ne 0 ]]; then
-  echo "Could not process actual test file for file diff comparison"
-  exit 1
-fi
+done < iDiff/tests/preprocess_files.txt
 
 while read -r differ actual expected; do
   success=0
