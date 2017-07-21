@@ -23,27 +23,34 @@ var RootCmd = &cobra.Command{
 	Short: "Compare two images.",
 	Long:  `Compares two images using the specifed differ (see iDiff documentation for available differs).`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if validArgs, err := validateArgs(args[1:]); !validArgs {
+		if validArgs, err := validateArgs(args); !validArgs {
 			glog.Error(err.Error())
 			os.Exit(1)
 		}
-		image1, err := utils.ImagePrepper{args[len(args)-2], eng}.GetImage()
+
+		utils.SetDockerEngine(eng)
+
+		img1Arg := args[len(args)-2]
+		img2Arg := args[len(args)-1]
+		diffArgs := args[:len(args)-2]
+
+		image1, err := utils.ImagePrepper{img1Arg}.GetImage()
 		if err != nil {
 			glog.Error(err.Error())
 			os.Exit(1)
 		}
-		image2, err := utils.ImagePrepper{args[len(args)-1], eng}.GetImage()
+		image2, err := utils.ImagePrepper{img2Arg}.GetImage()
 		if err != nil {
 			glog.Error(err.Error())
 			os.Exit(1)
 		}
-		diffTypes, err := differs.GetDiffers(args[1:len(args)-2])
+		diffTypes, err := differs.GetDiffers(diffArgs)
 		if err != nil {
 			glog.Error(err.Error())
 			os.Exit(1)
 		}
 
-		req := differs.DiffRequest{image1, image2, diffTypes, eng}
+		req := differs.DiffRequest{image1, image2, diffTypes}
 		if diffs, err := req.GetDiff(); err == nil {
 			for differ, diff := range diffs {
 				fmt.Printf("-----%s Result-----\n", differ)

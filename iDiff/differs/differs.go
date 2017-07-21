@@ -12,8 +12,7 @@ import (
 type DiffRequest struct {
 	Image1    utils.Image
 	Image2    utils.Image
-	DiffTypes  []Differ
-	UseDocker bool
+	DiffTypes []Differ
 }
 
 type DiffResult interface {
@@ -22,7 +21,7 @@ type DiffResult interface {
 }
 
 type Differ interface {
-	Diff(image1, image2 utils.Image, eng bool) (DiffResult, error)
+	Diff(image1, image2 utils.Image) (DiffResult, error)
 }
 
 var diffs = map[string]Differ{
@@ -39,18 +38,17 @@ func (diff DiffRequest) GetDiff() (map[string]DiffResult, error) {
 	img1 := diff.Image1
 	img2 := diff.Image2
 	diffs := diff.DiffTypes
-	eng := diff.UseDocker
-	
+
 	results := map[string]DiffResult{}
 	for _, differ := range diffs {
 		differName := reflect.TypeOf(differ).Name()
-		if diff, err := differ.Diff(img1, img2, eng); err == nil {
+		if diff, err := differ.Diff(img1, img2); err == nil {
 			results[differName] = diff
 		} else {
 			glog.Errorf("Error getting diff with %s", differName)
 		}
 	}
-	
+
 	var err error
 	if len(results) == 0 {
 		err = fmt.Errorf("Could not perform diff on %s and %s", img1, img2)
@@ -62,7 +60,7 @@ func (diff DiffRequest) GetDiff() (map[string]DiffResult, error) {
 }
 
 func GetDiffers(diffNames []string) (diffFuncs []Differ, err error) {
-	for _, diffName := range diffNames{
+	for _, diffName := range diffNames {
 		if d, exists := diffs[diffName]; exists {
 			diffFuncs = append(diffFuncs, d)
 		} else {
