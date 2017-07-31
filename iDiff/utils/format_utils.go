@@ -1,57 +1,62 @@
 package utils
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"html/template"
-	"log"
 	"os"
+	"reflect"
 	"strings"
+	"text/tabwriter"
+
+	"github.com/golang/glog"
 )
 
-func JSONify(diff interface{}) (string, error) {
-	diffBytes, err := json.MarshalIndent(diff, "", "  ")
-	if err != nil {
-		return "", err
-	}
-	return string(diffBytes), nil
+var templates = map[string]string{
+	"utils.PackageDiffResult":             SingleVersionOutput,
+	"utils.MultiVersionPackageDiffResult": MultiVersionOutput,
+	"utils.HistDiffResult":                HistoryOutput,
+	"utils.DirDiffResult":                 FSOutput,
 }
 
-func Output(diff PackageDiff) error {
-	const master = `Packages found only in {{.Image1}}:{{range $name, $value := .Packages1}}{{"\n"}}{{print "-"}}{{$name}}{{"\t"}}{{$value}}{{end}}{{"\n"}}
-Packages found only in {{.Image2}}:{{range $name, $value := .Packages2}}{{"\n"}}{{print "-"}}{{$name}}{{"\t"}}{{$value}}{{end}}
-Version differences:{{"\n"}}	(Package:	{{.Image1}}{{"\t\t"}}{{.Image2}}){{range .InfoDiff}}
-	{{.Package}}:	{{.Info1.Version}}	{{.Info2.Version}}
-	{{end}}`
-
-	funcs := template.FuncMap{"join": strings.Join}
-
-	masterTmpl, err := template.New("master").Funcs(funcs).Parse(master)
+func JSONify(diff interface{}) error {
+	diffBytes, err := json.MarshalIndent(diff, "", "  ")
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-
-	if err := masterTmpl.Execute(os.Stdout, diff); err != nil {
-		log.Fatal(err)
-	}
+	f := bufio.NewWriter(os.Stdout)
+	defer f.Flush()
+	f.Write(diffBytes)
 	return nil
 }
 
-func OutputMulti(diff MultiVersionPackageDiff) error {
-	const master = `Packages found only in {{.Image1}}:{{range $name, $value := .Packages1}}{{"\n"}}{{print "-"}}{{$name}}{{end}}{{"\n"}}
-Packages found only in {{.Image2}}:{{range $name, $value := .Packages2}}{{"\n"}}{{print "-"}}{{$name}}{{end}}
-Version differences:{{"\n"}}	(Package:	{{.Image1}}{{"\t\t"}}{{.Image2}}){{range .InfoDiff}}
-	{{.Package}}:	{{range .Info1}}{{.Version}}{{end}}	{{"\t"}} {{range .Info2}}{{.Version}}{{end}}
-	{{end}}`
+func getTemplate(diff interface{}) (string, error) {
+	diffType := reflect.TypeOf(diff).String()
+	if template, ok := templates[diffType]; ok {
+		return template, nil
+	}
+	return "", fmt.Errorf("No available template")
+}
 
-	funcs := template.FuncMap{"join": strings.Join}
-
-	masterTmpl, err := template.New("master").Funcs(funcs).Parse(master)
+func TemplateOutput(diff interface{}) error {
+	outputTmpl, err := getTemplate(diff)
 	if err != nil {
-		log.Fatal(err)
-	}
+		glog.Error(err)
 
-	if err := masterTmpl.Execute(os.Stdout, diff); err != nil {
-		log.Fatal(err)
 	}
+	funcs := template.FuncMap{"join": strings.Join}
+	tmpl, err := template.New("tmpl").Funcs(funcs).Parse(outputTmpl)
+	if err != nil {
+		glog.Error(err)
+		return err
+	}
+	w := tabwriter.NewWriter(os.Stdout, 8, 8, 8, ' ', 0)
+	err = tmpl.Execute(w, diff)
+	if err != nil {
+		glog.Error(err)
+		return err
+	}
+	w.Flush()
 	return nil
 }

@@ -14,11 +14,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import datetime
 import logging
 import os
 import subprocess
 import sys
 import test_util
+import time
+
+from google.cloud import bigquery
+
+DATASET_NAME = 'cloudperf'
+DEPLOY_LATENCY_PROJECT_ENV = 'DEPLOY_LATENCY_PROJECT'
+TABLE_NAME = 'deploy_latency'
 
 
 def _cleanup(appdir):
@@ -41,6 +49,40 @@ def _set_builder_image(builder):
         with open('test.yaml', 'w') as fout:
             for line in fin:
                 fout.write(line.replace('${STAGING_BUILDER_IMAGE}', builder))
+
+
+def _record_latency_to_bigquery(deploy_latency, language, is_xrt):
+    current_date = datetime.datetime.now()
+    row = [(language, current_date, deploy_latency, is_xrt)]
+
+    project = os.environ.get(DEPLOY_LATENCY_PROJECT_ENV)
+    if not project:
+        logging.warn('No project specified to record deployment latency!')
+        logging.warn('If you wish to record deployment latency, \
+                     please set %s env var and try again.',
+                     DEPLOY_LATENCY_PROJECT_ENV)
+        return 0
+    logging.debug('Fetching bigquery client for project %s', project)
+    client = bigquery.Client(project=project)
+    dataset = client.dataset(DATASET_NAME)
+    logging.debug('Writing bigquery data to table %s in dataset %s',
+                  TABLE_NAME, dataset)
+    table = bigquery.Table(name=TABLE_NAME, dataset=dataset)
+    table.reload()
+    return table.insert_data(row)
+
+
+def deploy_app_and_record_latency(appdir, language, is_xrt):
+    start_time = time.time()
+
+    version = deploy_app(None, None, appdir, None)
+
+    # Latency is in seconds round up to 2 decimals
+    deploy_latency = round(time.time() - start_time, 2)
+
+    # Store the deploy latency data to bigquery
+    _record_latency_to_bigquery(deploy_latency, language, is_xrt)
+    return version
 
 
 def deploy_app(base_image, builder_image, appdir, yaml):
@@ -79,10 +121,6 @@ def deploy_app(base_image, builder_image, appdir, yaml):
     finally:
         _cleanup(appdir)
         os.chdir(owd)
-
-
-def deploy_app_without_image(appdir):
-    return deploy_app(None, None, appdir, None)
 
 
 def stop_app(deployed_version):

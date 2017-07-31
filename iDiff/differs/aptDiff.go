@@ -9,29 +9,16 @@ import (
 	"github.com/golang/glog"
 )
 
-// AptDiff compares the packages installed by apt-get.
-func AptDiff(img1, img2 string, json bool, eng bool) (string, error) {
-	pack1, err := getPackages(img1)
-	if err != nil {
-		return "", err
-	}
-	pack2, err := getPackages(img2)
-	if err != nil {
-		return "", err
-	}
-
-	diff := utils.GetMapDiff(pack1, pack2)
-	diff.Image1 = img1
-	diff.Image2 = img2
-
-	if json {
-		return utils.JSONify(diff)
-	}
-	utils.Output(diff)
-	return "", nil
+type AptDiffer struct {
 }
 
-func getPackages(path string) (map[string]utils.PackageInfo, error) {
+// AptDiff compares the packages installed by apt-get.
+func (d AptDiffer) Diff(image1, image2 utils.Image) (utils.DiffResult, error) {
+	diff, err := singleVersionDiff(image1, image2, d)
+	return diff, err
+}
+
+func (d AptDiffer) getPackages(path string) (map[string]utils.PackageInfo, error) {
 	packages := make(map[string]utils.PackageInfo)
 	layerStems, err := utils.BuildLayerTargets(path, "layer/var/lib/dpkg/status")
 	if err != nil {

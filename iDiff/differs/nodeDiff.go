@@ -11,29 +11,13 @@ import (
 	"github.com/golang/glog"
 )
 
+type NodeDiffer struct {
+}
+
 // NodeDiff compares the packages installed by apt-get.
-// TODO: Move this code to a place so that it isn't repeated within each specific differ.
-func NodeDiff(img1, img2 string, json bool, eng bool) (string, error) {
-	pack1, err := getNodePackages(img1)
-	if err != nil {
-		glog.Errorf("Error reading packages from directory %s: %s\n", img1, err)
-		return "", err
-	}
-	pack2, err := getNodePackages(img2)
-	if err != nil {
-		glog.Errorf("Error reading packages from directory %s: %s\n", img2, err)
-		return "", err
-	}
-
-	diff := utils.GetMultiVersionMapDiff(pack1, pack2)
-	diff.Image1 = img1
-	diff.Image2 = img2
-
-	if json {
-		return utils.JSONify(diff)
-	}
-	utils.OutputMulti(diff)
-	return "", nil
+func (d NodeDiffer) Diff(image1, image2 utils.Image) (utils.DiffResult, error) {
+	diff, err := multiVersionDiff(image1, image2, d)
+	return diff, err
 }
 
 func buildNodePaths(path string) ([]string, error) {
@@ -57,7 +41,7 @@ func getPackageSize(path string) (int64, error) {
 	return packageStat.Size(), nil
 }
 
-func getNodePackages(path string) (map[string]map[string]utils.PackageInfo, error) {
+func (d NodeDiffer) getPackages(path string) (map[string]map[string]utils.PackageInfo, error) {
 	packages := make(map[string]map[string]utils.PackageInfo)
 
 	layerStems, err := buildNodePaths(path)

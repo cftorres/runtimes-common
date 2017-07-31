@@ -9,20 +9,13 @@ import (
 	"github.com/GoogleCloudPlatform/runtimes-common/iDiff/utils"
 )
 
+type PipDiffer struct {
+}
+
 // PipDiff compares pip-installed Python packages between layers of two different images.
-func PipDiff(img1, img2 string, json bool, eng bool) (string, error) {
-	pack1 := getPythonPackages(img1)
-	pack2 := getPythonPackages(img2)
-
-	diff := utils.GetMapDiff(pack1, pack2)
-	diff.Image1 = img1
-	diff.Image2 = img2
-
-	if json {
-		return utils.JSONify(diff)
-	}
-	utils.Output(diff)
-	return "", nil
+func (d PipDiffer) Diff(image1, image2 utils.Image) (utils.DiffResult, error) {
+	diff, err := singleVersionDiff(image1, image2, d)
+	return diff, err
 }
 
 func getPythonVersion(pathToLayer string) (string, bool) {
@@ -42,7 +35,7 @@ func getPythonVersion(pathToLayer string) (string, bool) {
 	return "", false
 }
 
-func getPythonPackages(path string) map[string]utils.PackageInfo {
+func (d PipDiffer) getPackages(path string) (map[string]utils.PackageInfo, error) {
 	packages := make(map[string]utils.PackageInfo)
 
 	// TODO: Eventually, this would make use of the shallow JSON and be diffed
@@ -87,5 +80,5 @@ func getPythonPackages(path string) map[string]utils.PackageInfo {
 		}
 	}
 
-	return packages
+	return packages, nil
 }
