@@ -8,9 +8,15 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/golang/glog"
 )
+
+func TimeTrack(start time.Time, name string) {
+	elapsed := time.Since(start)
+	fmt.Printf("%s took %s", name, elapsed)
+}
 
 var sourceToPrepMap = map[string]Prepper{
 	"ID":  IDPrepper{},
@@ -128,6 +134,7 @@ type CloudPrepper struct {
 }
 
 func (p CloudPrepper) ImageToFS() (string, error) {
+	defer TimeTrack(time.Now(), "ImageToFS()")
 	// check client compatibility with Docker API
 	valid, err := ValidDockerVersion()
 	if err != nil {
@@ -161,6 +168,7 @@ type IDPrepper struct {
 }
 
 func (p IDPrepper) ImageToFS() (string, error) {
+	defer TimeTrack(time.Now(), "ImageToFS()")
 	// check client compatibility with Docker API
 	valid, err := ValidDockerVersion()
 	if err != nil {
@@ -186,5 +194,6 @@ type TarPrepper struct {
 }
 
 func (p TarPrepper) ImageToFS() (string, error) {
+	defer TimeTrack(time.Now(), "ImageToFS()")
 	return getImageFromTar(p.Source)
 }
