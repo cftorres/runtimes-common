@@ -76,11 +76,11 @@ func (d NodeDiffer) getPackages(path string) (map[string]map[string]utils.Packag
 			if _, ok := packages[packageJSON.Name]; !ok {
 				// package not yet seen
 				infoMap := make(map[string]utils.PackageInfo)
-				infoMap[currPackage] = currInfo
+				infoMap[strings.TrimPrefix(currPackage, path)] = currInfo
 				packages[packageJSON.Name] = infoMap
 				continue
 			}
-			packages[packageJSON.Name][currPackage] = currInfo
+			packages[packageJSON.Name][strings.TrimPrefix(currPackage, path)] = currInfo
 
 		}
 	}
