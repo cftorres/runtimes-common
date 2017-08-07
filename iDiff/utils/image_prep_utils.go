@@ -121,18 +121,6 @@ func getImageFromTar(tarPath string) (string, error) {
 	glog.Info("Extracting image tar to obtain image file system")
 	path := strings.TrimSuffix(tarPath, filepath.Ext(tarPath))
 	err := UnTar(tarPath, path)
-
-	// args := []string{"iDiff/undocker.py", "--tar", tarPath, "-o", path, "-v"}
-	// undockerCmd := exec.Command("python", args...)
-	// if err := undockerCmd.Run(); err != nil {
-	// 	if exiterr, ok := err.(*exec.ExitError); ok {
-	// 		if status, ok := exiterr.Sys().(syscall.WaitStatus); ok && status.ExitStatus() > 0 {
-	// 			glog.Error("Undocker Command Exit Status: ", status.ExitStatus(), "\n for tar: ", tarPath)
-	// 		}
-	// 	} else {
-	// 		return "", err
-	// 	}
-	// }
 	return path, err
 }
 
