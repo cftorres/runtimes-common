@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	img "github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/golang/glog"
@@ -256,4 +257,55 @@ func getHistoryList(image string) ([]string, error) {
 		strhistory[i] = fmt.Sprintf("%s\n", strings.TrimSpace(layer.CreatedBy))
 	}
 	return strhistory, nil
+}
+
+func getImageConfigCmd(image string) (container.Config, error) {
+	var err error
+	var config container.Config
+	configArgs := []string{"inspect", "--format='{{json .Config}}'", image}
+	dockerInspectCmd := exec.Command("docker", configArgs...)
+	var response bytes.Buffer
+	dockerInspectCmd.Stdout = &response
+	if err := dockerInspectCmd.Run(); err != nil {
+		if exiterr, ok := err.(*exec.ExitError); ok {
+			if status, ok := exiterr.Sys().(syscall.WaitStatus); ok && status.ExitStatus() > 0 {
+				glog.Error("Docker Inspect Command Exit Status: ", status.ExitStatus())
+			}
+		} else {
+			return config, err
+		}
+	}
+	err = json.Unmarshal(response.Bytes(), &config)
+	if err != nil {
+		return config, err
+	}
+	return config, nil
+
+}
+
+func getImageConfig(image string) (container.Config, error) {
+	validDocker, err := ValidDockerVersion()
+	if err != nil {
+		return container.Config{}, err
+	}
+	var config container.Config
+	if validDocker {
+		ctx := context.Background()
+		cli, err := client.NewEnvClient()
+		if err != nil {
+			return container.Config{}, err
+		}
+		inspect, _, err := cli.ImageInspectWithRaw(ctx, image)
+		if err != nil {
+			return container.Config{}, err
+		}
+		config = *inspect.Config
+	} else {
+		glog.Info("Docker version incompatible with api, shelling out to local Docker client.")
+		config, err = getImageConfigCmd(image)
+		if err != nil {
+			return container.Config{}, err
+		}
+	}
+	return config, nil
 }

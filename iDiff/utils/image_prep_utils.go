@@ -14,6 +14,7 @@ import (
 
 	"github.com/containers/image/docker"
 	"github.com/golang/glog"
+	"github.com/docker/docker/api/types/container"
 )
 
 var sourceToPrepMap = map[string]Prepper{
@@ -31,6 +32,7 @@ var sourceCheckMap = map[string]func(string) bool{
 type Image struct {
 	Source  string
 	FSPath  string
+	EnvVars []string
 	History []string
 	Layers  []string
 }
@@ -40,11 +42,13 @@ type ImagePrepper struct {
 }
 
 type Prepper interface {
-	ImageToFS() (string, error)
+	init() error
+	getFinalFS() (string, error)
+	getHistory() []string
+	getEnvVars() []string
 }
 
 func (p ImagePrepper) GetImage() (Image, error) {
-	glog.Infof("Starting prep for image %s", p.Source)
 	img := p.Source
 
 	var prepper Prepper
@@ -57,64 +61,18 @@ func (p ImagePrepper) GetImage() (Image, error) {
 		}
 	}
 	if prepper == nil {
-		return Image{}, errors.New("Could not retrieve image from source")
+		return Image{}, errors.New("Could not determine image source")
 	}
 
-	imgPath, err := prepper.ImageToFS()
+	glog.Infof("Starting prep for image %s", p.Source)
+	image, err := prep(prepper)
 	if err != nil {
 		return Image{}, err
 	}
-
-	history, err := getHistoryList(p.Source)
-	if err != nil {
-		return Image{}, err
-	}
-
+	image.Source = img
 	glog.Infof("Finished prepping image %s", p.Source)
-	return Image{
-		Source:  img,
-		FSPath:  imgPath,
-		History: history,
-	}, nil
-}
 
-type histJSON struct {
-	History []histLayer `json:"history"`
-}
-
-type histLayer struct {
-	Created    string `json:"created"`
-	CreatedBy  string `json:"created_by"`
-	EmptyLayer bool   `json:"empty_layer"`
-}
-
-func getHistory(imgPath string) ([]string, error) {
-	glog.Info("Obtaining image history")
-	histList := []string{}
-	contents, err := ioutil.ReadDir(imgPath)
-	if err != nil {
-		return histList, err
-	}
-
-	for _, item := range contents {
-		if filepath.Ext(item.Name()) == ".json" && item.Name() != "manifest.json" {
-			if len(histList) != 0 {
-				// Another <hash>.json file has already been processed and the history determined is uncertain.
-				glog.Error("Multiple history sources detected for image at " + imgPath + ", history diff may be incorrect.")
-				break
-			}
-			file, err := ioutil.ReadFile(filepath.Join(imgPath, item.Name()))
-			if err != nil {
-				return histList, err
-			}
-			var histJ histJSON
-			json.Unmarshal(file, &histJ)
-			for _, layer := range histJ.History {
-				histList = append(histList, layer.CreatedBy)
-			}
-		}
-	}
-	return histList, nil
+	return image, nil
 }
 
 func getImageFromTar(tarPath string) (string, error) {
@@ -127,21 +85,31 @@ func getImageFromTar(tarPath string) (string, error) {
 // CloudPrepper prepares images sourced from a Cloud registry
 type CloudPrepper struct {
 	ImagePrepper
+	imageJSON configJSON
 }
 
-func (p CloudPrepper) ImageToFS() (string, error) {
+func (p CloudPrepper) init() error {
+	config, err := p.getConfig()
+	if err != nil {
+		return err
+	}
+	p.imageJSON = config
+	return nil
+}
+
+func (p CloudPrepper) getFinalFS() (string, error) {
 	URLPattern := regexp.MustCompile("^.+/(.+(:.+){0,1})$")
 	URLMatch := URLPattern.FindStringSubmatch(p.Source)
 	path := strings.Replace(URLMatch[1], ":", "", -1)
 	ref, err := docker.ParseReference("//" + p.Source)
 	if err != nil {
-		panic(err)
+		return "", err
 	}
 
 	img, err := ref.NewImage(nil)
 	if err != nil {
-		glog.Error(err)
-		return "", err
+		glog.Errorf("Error referencing image %s from registry: %s", p.Source, err)
+		return "", errors.New("Could not create image root filesystem")
 	}
 	defer img.Close()
 
@@ -173,11 +141,91 @@ func (p CloudPrepper) ImageToFS() (string, error) {
 	return path, nil
 }
 
-type IDPrepper struct {
-	ImagePrepper
+type imageHistoryItem struct {
+	CreatedBy  string    `json:"created_by"`
 }
 
-func (p IDPrepper) ImageToFS() (string, error) {
+type configJSON struct {
+	Config container.Config `json:"config"`
+	History []imageHistoryItem `json:"history"`
+}
+
+func (p CloudPrepper) getConfig() (configJSON, error) {
+	ref, err := docker.ParseReference("//" + p.Source)
+	if err != nil {
+		return configJSON{}, err
+	}
+
+	img, err := ref.NewImage(nil)
+	if err != nil {
+		glog.Errorf("Error referencing image %s from registry: %s", p.Source, err)
+		return configJSON{}, errors.New("Could not obtain image config")
+	}
+	defer img.Close()
+
+	configBlob, err := img.ConfigBlob()
+	if err != nil {
+		glog.Errorf("Error obtaining config blob for image %s from registry: %s", p.Source, err)
+		return configJSON{}, errors.New("Could not obtain image config")
+	}
+
+	var config configJSON
+	err = json.Unmarshal(configBlob, &config)
+	if err != nil {
+		glog.Errorf("Error with config file struct for image %s: %s", p.Source, err)
+		return configJSON{}, errors.New("Could not obtain image config")
+	}
+	return config, nil
+}
+
+func (p CloudPrepper) getHistory() []string {
+	history := p.imageJSON.History
+	strhistory := make([]string, len(history))
+	for i, layer := range history {
+		strhistory[i] = layer.CreatedBy
+	}
+	return strhistory
+}
+
+func (p CloudPrepper) getEnvVars() []string {
+	return p.imageJSON.Config.Env
+}
+
+// IDPrepper prepares images sourced from a local Docker ID
+type IDPrepper struct {
+	ImagePrepper
+	imageConfig container.Config
+}
+
+func (p IDPrepper) init() error {
+	config, err := p.getConfig()
+	if err != nil {
+		return err	
+	}
+	p.imageConfig = config
+	return nil
+}
+
+func (p IDPrepper) getConfig() (container.Config, error) {
+	// check client compatibility with Docker API
+	valid, err := ValidDockerVersion()
+	if err != nil {
+		return container.Config{}, err
+	}
+	var config container.Config
+	if !valid {
+		glog.Info("Docker version incompatible with api, shelling out to local Docker client.")
+		config, err = getImageConfigCmd(p.Source)
+	} else {
+		config, err = getImageConfig(p.Source)
+	}
+	if err != nil {
+		return container.Config{}, err
+	}
+	return config, nil
+}
+
+func (p IDPrepper) getFinalFS() (string, error) {
 	// check client compatibility with Docker API
 	valid, err := ValidDockerVersion()
 	if err != nil {
@@ -198,10 +246,106 @@ func (p IDPrepper) ImageToFS() (string, error) {
 	return getImageFromTar(tarPath)
 }
 
-type TarPrepper struct {
-	ImagePrepper
+func (p IDPrepper) getHistory() []string {	
+	history, err := getHistoryList(p.Source)
+	if err != nil {
+		glog.Error("Could not obtain image history for %s: %s", p.Source, err)	
+	}
+	return history
 }
 
-func (p TarPrepper) ImageToFS() (string, error) {
+func (p IDPrepper) getEnvVars() []string {	
+	return p.imageConfig.Env
+}
+
+// TarPrepper prepares images sourced from a .tar
+type TarPrepper struct {
+	ImagePrepper
+	imageJSON configJSON
+}
+
+func (p TarPrepper) init() error {
+	config, err := p.getConfig()
+	if err != nil {
+		return err
+	}
+	p.imageJSON = config
+	return nil
+}
+
+func (p TarPrepper) getConfig() (configJSON, error) {
+	tmpDir := strings.TrimSuffix(p.Source, filepath.Ext(p.Source))
+	defer os.Remove(tmpDir)
+	err := UnTar(p.Source, tmpDir)
+	if err != nil {
+		return configJSON{}, err
+	}
+	contents, err := ioutil.ReadDir(tmpDir)
+	glog.Error(contents)
+	if err != nil {
+		glog.Errorf("Could not read image tar contents: %s", err)
+		return configJSON{}, errors.New("Could not obtain image config")
+	}
+	
+	var config configJSON
+	configList := []string{}
+	for _, item := range contents {
+		if filepath.Ext(item.Name()) == ".json" && item.Name() != "manifest.json" {
+			if len(configList) != 0 {
+				// Another <image>.json file has already been processed and the image config obtained is uncertain.
+				glog.Error("Multiple possible config sources detected for image at " + p.Source + ", some diff results may be incorrect.")
+				break
+			}
+			fileName := filepath.Join(tmpDir, item.Name())
+			file, err := ioutil.ReadFile(fileName)
+			if err != nil {
+				glog.Errorf("Could not read config file %s: %s", fileName, err)
+				return configJSON{}, errors.New("Could not obtain image config")
+			}
+			var configFile configJSON
+			json.Unmarshal(file, &configFile)
+			config = configFile
+			configList = append(configList, fileName)
+		}
+	}
+/*	if (configJSON{}) == config {
+		glog.Warningf("No image config found in tar source %s. Pip differ may be incomplete due to missing PYTHONPATH information.")
+		return config, errors.New("Could not obtain image config")
+	}*/
+	return config, nil
+}
+
+func (p TarPrepper) getFinalFS() (string, error) {
 	return getImageFromTar(p.Source)
+}
+
+func (p TarPrepper) getHistory() []string {
+	history := p.imageJSON.History
+	strhistory := make([]string, len(history))
+	for i, layer := range history {
+		strhistory[i] = layer.CreatedBy
+	}
+	return strhistory
+}
+
+func (p TarPrepper) getEnvVars() []string {
+	return p.imageJSON.Config.Env
+}
+
+func prep(p Prepper) (Image, error) {
+	err := p.init()
+	if err != nil {
+		return Image{}, err
+	}
+	
+	imgFS, err := p.getFinalFS()
+	if err != nil {
+		return Image{}, err
+	}
+
+	return Image{
+		FSPath: imgFS,
+		History: p.getHistory(),
+		EnvVars: p.getEnvVars(),
+	}, nil
 }
