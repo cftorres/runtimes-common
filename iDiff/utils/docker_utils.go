@@ -113,7 +113,7 @@ type HistDiff struct {
 
 // getImageHistory shells out the docker history command and returns a list of history response items.
 // The history response items contain only the Created By information for each event.
-func getImageHistory(image string) ([]img.HistoryResponseItem, error) {
+func getImageHistoryCmd(image string) ([]img.HistoryResponseItem, error) {
 	imageID := image
 	var err error
 	var history []img.HistoryResponseItem
@@ -228,35 +228,30 @@ func imageToTarCmd(imageID, imageName string) (string, error) {
 	return imageTarPath, nil
 }
 
-func getHistoryList(image string) ([]string, error) {
+func getImageHistory(image string) ([]img.HistoryResponseItem, error) {
 	validDocker, err := ValidDockerVersion()
 	if err != nil {
-		return []string{}, err
+		return []img.HistoryResponseItem{}, err
 	}
 	var history []img.HistoryResponseItem
 	if validDocker {
 		ctx := context.Background()
 		cli, err := client.NewEnvClient()
 		if err != nil {
-			return []string{}, err
+			return []img.HistoryResponseItem{}, err
 		}
 		history, err = cli.ImageHistory(ctx, image)
 		if err != nil {
-			return []string{}, err
+			return []img.HistoryResponseItem{}, err
 		}
 	} else {
 		glog.Info("Docker version incompatible with api, shelling out to local Docker client.")
-		history, err = getImageHistory(image)
+		history, err = getImageHistoryCmd(image)
 		if err != nil {
-			return []string{}, err
+			return []img.HistoryResponseItem{}, err
 		}
 	}
-
-	strhistory := make([]string, len(history))
-	for i, layer := range history {
-		strhistory[i] = fmt.Sprintf("%s\n", strings.TrimSpace(layer.CreatedBy))
-	}
-	return strhistory, nil
+	return history, nil
 }
 
 func getImageConfigCmd(image string) (container.Config, error) {

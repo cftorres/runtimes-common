@@ -42,10 +42,8 @@ type ImagePrepper struct {
 }
 
 type Prepper interface {
-	init() error
+	getConfig() (configJSON, error)
 	getFinalFS() (string, error)
-	getHistory() []string
-	getEnvVars() []string
 }
 
 func (p ImagePrepper) GetImage() (Image, error) {
@@ -86,15 +84,6 @@ func getImageFromTar(tarPath string) (string, error) {
 type CloudPrepper struct {
 	ImagePrepper
 	imageJSON configJSON
-}
-
-func (p CloudPrepper) init() error {
-	config, err := p.getConfig()
-	if err != nil {
-		return err
-	}
-	p.imageJSON = config
-	return nil
 }
 
 func (p CloudPrepper) getFinalFS() (string, error) {
@@ -145,8 +134,12 @@ type imageHistoryItem struct {
 	CreatedBy  string    `json:"created_by"`
 }
 
+type configObj struct {
+	Env []string `json:"Env"`
+}
+
 type configJSON struct {
-	Config container.Config `json:"config"`
+	Config configObj `json:"config"`
 	History []imageHistoryItem `json:"history"`
 }
 
@@ -178,39 +171,16 @@ func (p CloudPrepper) getConfig() (configJSON, error) {
 	return config, nil
 }
 
-func (p CloudPrepper) getHistory() []string {
-	history := p.imageJSON.History
-	strhistory := make([]string, len(history))
-	for i, layer := range history {
-		strhistory[i] = layer.CreatedBy
-	}
-	return strhistory
-}
-
-func (p CloudPrepper) getEnvVars() []string {
-	return p.imageJSON.Config.Env
-}
-
 // IDPrepper prepares images sourced from a local Docker ID
 type IDPrepper struct {
 	ImagePrepper
-	imageConfig container.Config
 }
 
-func (p IDPrepper) init() error {
-	config, err := p.getConfig()
-	if err != nil {
-		return err	
-	}
-	p.imageConfig = config
-	return nil
-}
-
-func (p IDPrepper) getConfig() (container.Config, error) {
+func (p IDPrepper) getConfig() (configJSON, error) {
 	// check client compatibility with Docker API
 	valid, err := ValidDockerVersion()
 	if err != nil {
-		return container.Config{}, err
+		return configJSON{}, err
 	}
 	var config container.Config
 	if !valid {
@@ -220,9 +190,9 @@ func (p IDPrepper) getConfig() (container.Config, error) {
 		config, err = getImageConfig(p.Source)
 	}
 	if err != nil {
-		return container.Config{}, err
+		return configJSON{}, err
 	}
-	return config, nil
+	return configJSON{Config: configObj{Env: config.Env}, History: p.getHistory()}, nil
 }
 
 func (p IDPrepper) getFinalFS() (string, error) {
@@ -246,31 +216,21 @@ func (p IDPrepper) getFinalFS() (string, error) {
 	return getImageFromTar(tarPath)
 }
 
-func (p IDPrepper) getHistory() []string {	
-	history, err := getHistoryList(p.Source)
+func (p IDPrepper) getHistory() []imageHistoryItem {	
+	history, err := getImageHistory(p.Source)
 	if err != nil {
 		glog.Error("Could not obtain image history for %s: %s", p.Source, err)	
 	}
-	return history
-}
-
-func (p IDPrepper) getEnvVars() []string {	
-	return p.imageConfig.Env
+	historyItems := []imageHistoryItem{}
+	for _, item := range history {
+		historyItems = append(historyItems, imageHistoryItem{CreatedBy: item.CreatedBy})
+	}
+	return historyItems
 }
 
 // TarPrepper prepares images sourced from a .tar
 type TarPrepper struct {
 	ImagePrepper
-	imageJSON configJSON
-}
-
-func (p TarPrepper) init() error {
-	config, err := p.getConfig()
-	if err != nil {
-		return err
-	}
-	p.imageJSON = config
-	return nil
 }
 
 func (p TarPrepper) getConfig() (configJSON, error) {
@@ -281,7 +241,6 @@ func (p TarPrepper) getConfig() (configJSON, error) {
 		return configJSON{}, err
 	}
 	contents, err := ioutil.ReadDir(tmpDir)
-	glog.Error(contents)
 	if err != nil {
 		glog.Errorf("Could not read image tar contents: %s", err)
 		return configJSON{}, errors.New("Could not obtain image config")
@@ -319,21 +278,16 @@ func (p TarPrepper) getFinalFS() (string, error) {
 	return getImageFromTar(p.Source)
 }
 
-func (p TarPrepper) getHistory() []string {
-	history := p.imageJSON.History
-	strhistory := make([]string, len(history))
-	for i, layer := range history {
-		strhistory[i] = layer.CreatedBy
+func getHistoryList(historyItems []imageHistoryItem) []string {
+	strhistory := make([]string, len(historyItems))
+	for i, layer := range historyItems {
+		strhistory[i] = strings.TrimSpace(layer.CreatedBy)
 	}
 	return strhistory
 }
 
-func (p TarPrepper) getEnvVars() []string {
-	return p.imageJSON.Config.Env
-}
-
 func prep(p Prepper) (Image, error) {
-	err := p.init()
+	config, err := p.getConfig()
 	if err != nil {
 		return Image{}, err
 	}
@@ -342,10 +296,13 @@ func prep(p Prepper) (Image, error) {
 	if err != nil {
 		return Image{}, err
 	}
-
-	return Image{
+	
+	history := getHistoryList(config.History)
+	envVars := config.Config.Env
+	img := Image{
 		FSPath: imgFS,
-		History: p.getHistory(),
-		EnvVars: p.getEnvVars(),
-	}, nil
+		History: history,
+		EnvVars: envVars,
+	}
+	return img, nil
 }
